@@ -1,0 +1,7 @@
+{
+	"errors": [{
+		"code": "UNKNOWN",
+		"message": "unknown error",
+		"detail": "Put https://s3.amazonaws.com/docker-images-prod/registry-v2/docker/registry/v2/repositories/lyst/sortinghat/_uploads/fafc5d11-0c70-4887-9c1b-24cb01d04f02/startedat: dial tcp 54.231.9.56:443: connection timed out"
+	}]
+}

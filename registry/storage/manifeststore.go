@@ -55,6 +55,25 @@ type manifestStore struct {
 
 var _ distribution.ManifestService = &manifestStore{}
 
+// ServeManifest serves a manifest by digest directly to an http.ResponseWriter
+func (ms *manifestStore) ServeManifest(ctx context.Context, w http.ResponseWriter, r *http.Request, dgst digest.Digest) error {
+	manifest, err := ms.Get(ctx, dgst)
+	if err != nil {
+		return err
+	}
+
+	ct, p, err := manifest.Payload()
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Length", fmt.Sprint(len(p)))
+	w.Header().Set("Docker-Content-Digest", dgst.String())
+	w.Write(p)
+	return nil
+}
+
 func (ms *manifestStore) Exists(ctx context.Context, dgst digest.Digest) (bool, error) {
 	dcontext.GetLogger(ms.ctx).Debug("(*manifestStore).Exists")
 

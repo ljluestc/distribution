@@ -1,0 +1,16 @@
+version: '3'
+services:
+  registry:
+    image: registry:2.0
+    container_name: registry
+    ports:
+      - "5000:5000"
+    networks:
+      registry_net:
+        ipv4_address: 192.168.99.100
+networks:
+  registry_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.99.0/24

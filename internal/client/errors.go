@@ -35,7 +35,9 @@ type UnexpectedHTTPResponseError struct {
 }
 
 func (e *UnexpectedHTTPResponseError) Error() string {
-	return fmt.Sprintf("error parsing HTTP %d response body: %s: %q", e.StatusCode, e.ParseErr.Error(), string(e.Response))
+	// Redact sensitive information before returning the error message
+	sanitizedResponse := RedactSensitiveInfo(string(e.Response))
+	return fmt.Sprintf("error parsing HTTP %d response body: %s: %q", e.StatusCode, e.ParseErr.Error(), sanitizedResponse)
 }
 
 func parseHTTPErrorResponse(resp *http.Response) error {
@@ -55,7 +57,9 @@ func parseHTTPErrorResponse(resp *http.Response) error {
 
 	ctHeader := resp.Header.Get("Content-Type")
 	if ctHeader == "" {
-		return makeError(statusCode, string(body))
+		// Redact sensitive information before returning the error
+		sanitizedBody := RedactSensitiveInfo(string(body))
+		return makeError(statusCode, sanitizedBody)
 	}
 
 	contentType, _, err := mime.ParseMediaType(ctHeader)
@@ -64,7 +68,9 @@ func parseHTTPErrorResponse(resp *http.Response) error {
 	}
 
 	if contentType != "application/json" && contentType != "application/vnd.api+json" {
-		return makeError(statusCode, string(body))
+		// Redact sensitive information before returning the error
+		sanitizedBody := RedactSensitiveInfo(string(body))
+		return makeError(statusCode, sanitizedBody)
 	}
 
 	// For backward compatibility, handle irregularly formatted
@@ -74,14 +80,16 @@ func parseHTTPErrorResponse(resp *http.Response) error {
 	}
 	err = json.Unmarshal(body, &detailsErr)
 	if err == nil && detailsErr.Details != "" {
-		return makeError(statusCode, detailsErr.Details)
+		// Redact sensitive information in the details field
+		sanitizedDetails := RedactSensitiveInfo(detailsErr.Details)
+		return makeError(statusCode, sanitizedDetails)
 	}
 
 	if err := json.Unmarshal(body, &errors); err != nil {
 		return &UnexpectedHTTPResponseError{
 			ParseErr:   err,
 			StatusCode: statusCode,
-			Response:   body,
+			Response:   body, // Will be redacted in Error() method
 		}
 	}
 
@@ -91,7 +99,16 @@ func parseHTTPErrorResponse(resp *http.Response) error {
 		return &UnexpectedHTTPResponseError{
 			ParseErr:   ErrNoErrorsInBody,
 			StatusCode: statusCode,
-			Response:   body,
+			Response:   body, // Will be redacted in Error() method
+		}
+	}
+
+	// Sanitize error details in errcode.Errors
+	for i := range errors {
+		if errors[i].Detail != "" {
+			if detailStr, ok := errors[i].Detail.(string); ok {
+				errors[i].Detail = RedactSensitiveInfo(detailStr)
+			}
 		}
 	}
 
@@ -175,6 +192,12 @@ func HandleErrorResponse(resp *http.Response) error {
 		return &UnexpectedHTTPStatusError{Status: resp.Status}
 	}
 	return HandleHTTPResponseError(resp)
+}
+
+// SanitizeErrorMessage is an exported function that other packages can use
+// to sanitize error messages containing sensitive information.
+func SanitizeErrorMessage(msg string) string {
+	return RedactSensitiveInfo(msg)
 }
 
 // SuccessStatus returns true if the argument is a successful HTTP response

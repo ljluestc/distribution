@@ -41,8 +41,11 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
+	"github.com/distribution/distribution/v3/internal/client"
 	"github.com/distribution/distribution/v3/internal/dcontext"
 	prometheus "github.com/distribution/distribution/v3/metrics"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
@@ -70,6 +73,27 @@ type Base struct {
 	storagedriver.StorageDriver
 }
 
+// redactSensitiveInfo redacts S3 bucket names, paths, and IP addresses from error messages.
+func redactSensitiveInfo(msg string) string {
+	// Redact S3 URLs (e.g., https://s3.amazonaws.com/bucket-name/...)
+	s3URLRe := regexp.MustCompile(`https?://s3\.amazonaws\.com/[^\s/]+/[^\s"]*`)
+	msg = s3URLRe.ReplaceAllString(msg, "https://s3.amazonaws.com/[redacted]/[redacted]")
+
+	// Redact generic bucket URLs (e.g., https://bucket.s3.amazonaws.com/...)
+	bucketURLRe := regexp.MustCompile(`https?://[a-zA-Z0-9\-]+\.s3\.amazonaws\.com/[^\s"]*`)
+	msg = bucketURLRe.ReplaceAllString(msg, "https://[redacted].s3.amazonaws.com/[redacted]")
+
+	// Redact IPv4 addresses with port (e.g., 54.231.9.56:443)
+	ipPortRe := regexp.MustCompile(`\b\d{1,3}(?:\.\d{1,3}){3}:\d+\b`)
+	msg = ipPortRe.ReplaceAllString(msg, "[redacted-ip:port]")
+
+	// Redact IPv4 addresses (e.g., 54.231.9.56)
+	ipRe := regexp.MustCompile(`\b\d{1,3}(?:\.\d{1,3}){3}\b`)
+	msg = ipRe.ReplaceAllString(msg, "[redacted-ip]")
+
+	return msg
+}
+
 // Format errors received from the storage driver
 func (base *Base) setDriverName(e error) error {
 	switch actual := e.(type) {
@@ -88,9 +112,14 @@ func (base *Base) setDriverName(e error) error {
 		actual.DriverName = base.StorageDriver.Name()
 		return actual
 	default:
+		// Redact sensitive info in the error detail if it's a string or wraps a string
+		var detail interface{} = e
+		if err, ok := e.(error); ok {
+			detail = redactSensitiveInfo(err.Error())
+		}
 		return storagedriver.Error{
 			DriverName: base.StorageDriver.Name(),
-			Detail:     e,
+			Detail:     detail,
 		}
 	}
 }

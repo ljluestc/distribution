@@ -9,6 +9,7 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/cache"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/reference"
+	"github.com/distribution/distribution/v3/registry/storage/driver/middleware/bloblink"
 )
 
 var (
